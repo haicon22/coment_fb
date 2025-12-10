@@ -1,102 +1,55 @@
 from flask import Flask, request, jsonify
 import redis
 import json
-import uuid
-import os
 import time
+import base64
 
-app = Flask(__name__)
-
-# ===== REDIS =====
+# ================= CONFIG =================
 REDIS_URL = "redis://red-d4so7skcjiac739nr6a0:6379"
+QUEUE_KEY = "fb_jobs"
+RESULT_KEY = "fb_results"
 
-import redis
+# ================= APP ====================
+app = Flask(__name__)
 r = redis.from_url(REDIS_URL, decode_responses=True)
-r.ping()  # test connect
 
-
+# ================= ROUTES =================
 @app.route("/")
 def home():
     return "TOOLFB API OK"
 
-# ===== GỬI JOB COMMENT =====
 @app.route("/api/comment", methods=["POST"])
 def api_comment():
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr)
-
-    # ✅ Rate limit IP (bắt buộc, để public không sập)
-    key = f"rate:{ip}:{int(time.time() // 60)}"
-    count = r.incr(key)
-    if count == 1:
-        r.expire(key, 60)
-    if count > 10:
-        return jsonify({
-            "status": "error",
-            "msg": "Too many requests, slow down"
-        }), 429
-
     try:
-        data = request.get_json(force=True)
-    except:
-        return jsonify({
-            "status": "error",
-            "msg": "Invalid JSON"
-        }), 400
+        data = request.json
 
-    need = ["cookie", "uid", "dtsg", "comment_text", "id_cm"]
-    for k in need:
-        if k not in data or not data[k]:
-            return jsonify({
-                "status": "error",
-                "msg": f"Missing {k}"
-            }), 400
-
-    job_id = str(uuid.uuid4())
-
-    job_data = {
-        "job_id": job_id,
-        "ip": ip,
-        "data": {
+        job_id = str(int(time.time() * 1000))
+        payload = {
+            "job_id": job_id,
             "cookie": data["cookie"],
             "uid": data["uid"],
             "dtsg": data["dtsg"],
-            "comment_text": data["comment_text"],
+            "text": data["text"],
             "id_cm": data["id_cm"]
-        },
-        "time": time.time()
-    }
+        }
 
-    # ✅ Đưa vào queue
-    r.rpush("fb_queue", json.dumps(job_data))
+        r.rpush(QUEUE_KEY, json.dumps(payload))
 
-    # ✅ Set trạng thái ban đầu
-    r.set(
-        f"job:{job_id}",
-        json.dumps({"status": "pending"}),
-        ex=300
-    )
-
-    return jsonify({
-        "status": "queued",
-        "job_id": job_id
-    })
-
-
-# ===== CHECK KẾT QUẢ =====
-@app.route("/api/result/<job_id>")
-def api_result(job_id):
-    rs = r.get(f"job:{job_id}")
-    if not rs:
-        return jsonify({"status": "pending"})
-
-    try:
-        return jsonify(json.loads(rs))
-    except:
         return jsonify({
-            "status": "unknown",
-            "raw": rs
+            "status": "queued",
+            "job_id": job_id
         })
 
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
+
+@app.route("/api/result/<job_id>")
+def api_result(job_id):
+    res = r.get(f"{RESULT_KEY}:{job_id}")
+    if not res:
+        return jsonify({"status": "processing"})
+    return jsonify(json.loads(res))
