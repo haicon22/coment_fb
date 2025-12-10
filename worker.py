@@ -4,9 +4,10 @@ import os
 import time
 from fb_logic import fb_comment
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-r = redis.from_url(REDIS_URL, decode_responses=True)
+REDIS_URL = "redis://red-d4so7skcjiac739nr6a0:6379"
 
+import redis
+r = redis.from_url(REDIS_URL, decode_responses=True)
 print("WORKER STARTED")
 
 while True:
