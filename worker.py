@@ -1,7 +1,11 @@
-import redis, json, os, time
+import redis
+import json
+import os
+import time
 from fb_logic import fb_comment
 
-r = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+r = redis.from_url(REDIS_URL, decode_responses=True)
 
 print("WORKER STARTED")
 
@@ -10,9 +14,13 @@ while True:
     if not job:
         continue
 
-    data = json.loads(job[1])
-    p = data["data"]
-    job_id = data["job_id"]
+    try:
+        job_data = json.loads(job[1])
+    except:
+        continue
+
+    job_id = job_data["job_id"]
+    p = job_data["data"]
 
     ok, fb_result = fb_comment(
         p["cookie"],
@@ -22,14 +30,15 @@ while True:
         p["id_cm"]
     )
 
-    time.sleep(2)  # chống FB quét
+    # ✅ Delay tránh FB quét
+    time.sleep(2)
 
     if ok:
         r.set(
             f"job:{job_id}",
             json.dumps({
                 "status": "success",
-                "fb": fb_result
+                "fb_result": fb_result
             }),
             ex=300
         )
@@ -38,8 +47,7 @@ while True:
             f"job:{job_id}",
             json.dumps({
                 "status": "error",
-                "fb": fb_result
+                "fb_result": fb_result
             }),
             ex=300
         )
-        
