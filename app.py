@@ -8,8 +8,12 @@ import time
 app = Flask(__name__)
 
 # ===== REDIS =====
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+REDIS_URL = "redis://red-d4so7skcjiac739nr6a0:6379"
+
+import redis
 r = redis.from_url(REDIS_URL, decode_responses=True)
+r.ping()  # test connect
+
 
 @app.route("/")
 def home():
